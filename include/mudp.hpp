@@ -94,7 +94,7 @@ constexpr size_t log2(size_t x, size_t result = 0)
     return (x == 1) ? result : log2(x >> 1, result + 1);
 }
 
-template<uint16_t PORT, size_t MAXMUM_NUMBER_SEND_PER_RECEIVE = 5, size_t MAXMUM_NUMBER_RECEIVE_UNIT = 128, size_t MAXMUM_MESSAGE_UNIT = 512>
+template<uint16_t PORT, size_t MAXMUM_NUMBER_SEND_PER_RECEIVE = 8, size_t MAXMUM_NUMBER_RECEIVE_UNIT = 128, size_t MAXMUM_MESSAGE_UNIT = 512>
 class MUDP 
 {
 private:
@@ -202,10 +202,11 @@ public:
 };
 
 #ifdef MUDP_TEST
+
+MUDP<53548> mudp;
+
 int main()
 {
-    MUDP<53548, 10, 4888> mudp;
-
     while (true)
     {
         const int received_number = mudp.MultipleReceive();
