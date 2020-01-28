@@ -1,3 +1,7 @@
+
+#ifndef BENCHMARK_HPP
+#define BENCHMARK_HPP
+
 #include <stdio.h>
 #include <time.h>
 #include <sys/time.h>
@@ -7,11 +11,11 @@
 
 double timer_for_heavy(const auto& f)
 {
-    clock_t start, stop;
-    start = clock();
+    struct timeval start, stop;
+    gettimeofday(&start, NULL);
     f();
-    stop = clock();
-    return (double)(stop - start) / CLOCKS_PER_SEC;
+    gettimeofday(&stop, NULL);
+    return stop.tv_sec - start.tv_sec + (double)(stop.tv_usec - start.tv_usec) / 1000000;;
 }
 
 double timer_for_light(int count, const auto& f)
@@ -25,8 +29,7 @@ double timer_for_light(int count, const auto& f)
     });
 }
 
-#ifdef BENCHMARK_TEST
-int main()
+int BENCHMARK_TEST()
 {
     int count = 1000000;
     struct timeval tv;
@@ -48,6 +51,18 @@ int main()
     printf("gmtime_r     : %fs\n", timer_for_light(count, [&]{gmtime_r(&tt, &tm);}));
     printf("chrono       : %fs\n", timer_for_light(count, [] {std::chrono::steady_clock::now();}));
 
+    uint64_t micro;
+
+    auto f = [&]
+    {
+        clock_gettime(CLOCK_REALTIME, &tp);
+        micro = tp.tv_sec * 1e+6 + tp.tv_nsec * 1e-9;
+    };
+
+    printf("micro       : %fs\n", timer_for_light(count, f));
+
     return 0;
 }
+
 #endif
+
