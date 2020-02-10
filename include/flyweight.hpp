@@ -34,11 +34,35 @@ public:
     }
 };
 
-
-
 template<class T>
 class Flyweight
 {
+    class Index
+    {
+        const Flyweight& flyweight;
+        size_t index;
+    public:
+        explicit Index(const Flyweight& flyweight_, size_t index_) noexcept
+            : flyweight {flyweight_}
+            , index {index_}
+        {
+        }
+
+        T& operator*() noexcept
+        {
+            return *flyweight[index];
+        }
+
+        T* operator->() noexcept
+        {
+            return flyweight[index].operator->();
+        }
+
+        void Release() noexcept
+        {
+            return flyweight[index].Release();
+        }
+    };
 private:
     size_t capacity;
     size_t size;
@@ -96,7 +120,7 @@ public:
 
 #include <stdio.h>
 
-static int FLYWEIGHT_TEST()
+int FLYWEIGHT_TEST()
 {
     Flyweight<int> f(2);
 

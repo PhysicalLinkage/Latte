@@ -49,7 +49,7 @@ public:
 
 #include <string.h>
 
-static int CMAC_TEST()
+int CMAC_TEST()
 {
     CMAC cmac;
     uint8_t key[CMAC_KEY_SIZE] = 

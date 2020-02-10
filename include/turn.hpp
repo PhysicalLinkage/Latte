@@ -9,22 +9,33 @@
 #include <vector3.hpp>
 
 #include <deque>
-
-struct Client
-{
-    uint8_t key[CMAC_KEY_SIZE];
-    sockaddr_in address;
-    Vector3 position;
-    FrameTimer timer;
-};
-
+#include <vector>
 
 template<uint16_t PORT, size_t MNCU = 4, size_t MNRU = 4, size_t MNSU = 4, size_t MMU = 512>
 class Turn
 {
 public:
+    using PoolIndexs = std::deque<size_t>;
+    
+    struct Data
+    {
+        uint16_t size;
+        uint8_t* data;
+    };
+
+    struct Client
+    {
+        uint8_t key[CMAC_KEY_SIZE];
+        sockaddr_in address;
+        FrameTimer timer_for_using;
+        FrameTimer timer_for_send;
+        uint16_t seq;
+        uint16_t ack;
+        uint16_t send_seq;
+        std::deque<Data> datas;
+    };
+
     using Packet        = TurnPacket<MMU>;
-    using PoolIndexs    = std::deque<size_t>;
     using AddresPool    = Flyweight<sockaddr_in>;
     using PacketPool    = Flyweight<Packet>;
     using ClientPool    = Flyweight<Client>;
@@ -67,6 +78,7 @@ public:
     {
         size_t i = client_pool.New();
         auto& client = client_pool[i];
+        client->timer_for_using.Setup(10e9);
 
         printf("client id : %lu\n", i);
         printf("client key: ");
@@ -81,7 +93,8 @@ public:
     void Update() noexcept
     {
         frame.Update();
-        UpdateClientTimers();
+
+        UpdateClients();
 
         SetupRecvmmsg();
 
@@ -94,7 +107,7 @@ public:
 
         printf("%d recv\n", recv_size); 
 
-        for (size_t i = 0; i < recv_size; ++i)
+        for (int i = 0; i < recv_size; ++i)
         {
             auto& size = recv_mmhs[i].msg_len;
             
@@ -116,15 +129,31 @@ public:
 
             if (!packet->TryCheckMac(cmac, client->key, size))
             {
-                printf("size    : %lu\n", size);
+                printf("size    : %u\n", size);
+                printf("data len: %lu\n", size - TURN_HEADER_SIZE);
                 packet->DebugLog(stdout);
                 continue;
             }
 
-            printf("Yes auth\n");          
+            printf("Success auth\n");
+
+            client->timer_for_using.Reset();
+
+            uint16_t offset = 0;
+            for (uint16_t seq_i = packet->seq; seq_i !=  (client->seq - 1); --seq_i)
+            {
+                constexpr size_t size_of_uint16 = sizeof(uint16_t);
+                uint16_t&   size = *(uint16_t*)(packet->data + offset);
+                uint8_t*    data = &packet->data[size_of_uint16 + offset];
+                offset += size_of_uint16 + size;
+                UpdateData(packet->id, data, size);
+            }
+            client->seq = packet->seq;
+            client->ack = packet->ack;
         }
 
-        int send_size = mudp.Sendmmsg(send_mmhs, MNSU);
+
+        int send_size = 0; //mudp.Sendmmsg(send_mmhs, MNSU);
 
         if (send_size <= 0)
         {
@@ -135,7 +164,8 @@ public:
     }
 
 private:
-    void UpdateClientTimers() noexcept
+
+    void UpdateClients() noexcept
     {
         for (size_t i = 0; i < client_pool.Size(); ++i)
         {
@@ -145,7 +175,28 @@ private:
             }
 
             auto& client = client_pool[i];
-            client->timer.Update(frame);
+            
+            client->timer_for_using.Update(frame);
+            client->timer_for_send.Update(frame);
+
+            if (client->timer_for_using.IsExpired())
+            {
+                client.Release();
+                continue;
+            }
+
+            if (client->timer_for_send.IsExpired())
+            {
+                for (uint16_t ack_i = client->ack; ack_i != client->send_seq + 1; ++ack_i)
+                {
+                    client->datas.pop_front();
+                }
+
+                for (int i = client->datas.size(); i >= 0; --i)
+                {
+                    
+                }
+            }           
         }
     }
 
@@ -170,6 +221,11 @@ private:
         }
     }
 
+    void UpdateData(uint16_t id, uint8_t* data, uint16_t size) noexcept
+    {
+
+    }
+
     void UpdateAfterSendmmsg(int send_size) noexcept
     {
     }
@@ -178,7 +234,7 @@ private:
 
 int TURN_TEST()
 {
-    Turn<53548> turn;
+    Turn<4888> turn;
     while (true)
         turn.Update();
     return 0;

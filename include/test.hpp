@@ -3,13 +3,14 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 
+
 static int TEST_TEST()
 {
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     sockaddr_in addr;
     addr.sin_family = AF_INET;
     addr.sin_port = htons(53548);
-    addr.sin_addr.s_addr = inet_addr("153.148.31.174");
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     char data[64];
 
     mmsghdr m;

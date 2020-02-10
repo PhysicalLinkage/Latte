@@ -1,2 +1,3 @@
 let g:ale_cpp_gcc_executable = "/usr/bin/g++"
-let g:ale_cpp_gcc_options = "-std=c++17 -w -Iinclude"
+let g:ale_cpp_gcc_options = "-std=c++17 -w -Iinclude -Itest/include"
+

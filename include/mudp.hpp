@@ -60,9 +60,9 @@ struct MUDP
 
 
 
-static int MUDP_TEST()
+int MUDP_TEST()
 {
-    MUDP<53548> mudp;
+    MUDP<4888> mudp;
 
     struct packet
     {
@@ -73,7 +73,6 @@ static int MUDP_TEST()
 
     constexpr size_t MNU = 10;
     constexpr size_t IOV_LEN = 3;
-    constexpr size_t MMU = 512;
 
     mmsghdr mmhs[MNU];
     sockaddr_in addrs[MNU];
@@ -112,10 +111,6 @@ static int MUDP_TEST()
             mudp.Sendmmsg(mmhs, recv_size);
         }
     }
-    
-
-    mmsghdr send_mmh[MNU];
-
 
     return 0;
 }

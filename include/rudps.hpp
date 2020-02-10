@@ -2,241 +2,244 @@
 #ifndef RUDPS_HPP
 #define RUDPS_HPP
 
-#include <list>
-#include <deque>
-#include <unordered_map>
-
-#include <ftm.hpp>
-#include <source.hpp>
-#include <mudp.hpp>
 #include <cmac.hpp>
+#include <frame_timer.hpp>
+#include <send_queue.hpp>
+#include <vector>
+#include <deque>
+#include <list>
 
-namespace Latte
-{
+#define SEND_INTERVAL 1e9
+#define RUDPS_ELEMENT_SIZE 6
 
-namespace Linux
+struct ShortMessage
 {
-
-namespace Network
-{
-
-template<size_t MMU>
-struct Packet
-{
-    sockaddr_in addr;
-    std::array<uint8_t, MMU> array;
+    uint8_t data[UINT8_MAX];
+    uint8_t size;
 };
 
-template<size_t MMU>
-struct User
+struct HeaderRUDPS
 {
-    uint8_t key[CMAC::KEY_SIZE];
+    uint8_t mac[CMAC_MAC_SIZE];
+    uint32_t counter;
     uint16_t id;
-    timespec time;
-    uint8_t seq;
-    uint8_t ack;
-    sockaddr_in addr;
-    std::deque<std::array<uint8_t, MMU>> messages;
+    uint16_t seq;
+    uint16_t ack;
 };
 
-template<size_t PORT, size_t MNRU, size_t MNSU, size_t MMU>
-struct RUDPS
+constexpr int HeaderSize() noexcept
 {
-    static constexpr size_t HEADER_SIZE = 
-        sizeof(uint8_t) * CMAC::MAC_SIZE + 
-        sizeof(uint64_t) +
-        sizeof(uint16_t) * 3;
+    constexpr HeaderRUDPS header{};
+    constexpr int size =
+        sizeof(header.mac) +
+        sizeof(header.counter) +
+        sizeof(header.id) +
+        sizeof(header.seq) +
+        sizeof(header.ack);
+    return size;
+}
 
-    MUDP<PORT, MNRU, MNSU> mudp;
-    sockaddr_in recv_addrs[MNRU];
-    Packet<MMU> recv_msgs[MNRU];
-    std::deque<sockaddr_in> send_addrs;
-    std::deque<Packet<MMU>> send_msgs;
-    std::unordered_map<uint16_t, User<MMU>> users;
-    CMAC cmac;
-    timespec now_time;
-    
-    explicit RUDPS() noexcept
-        : mudp {}
-        , recv_addrs {}
-        , recv_msgs {}
-        , send_addrs {}
-        , send_msgs {}
-        , users {}
-        , cmac {}
-        , now_time {}
+class RUDPS
+{
+private:
+    sockaddr_in remote_address;
+    uint8_t* key;
+    HeaderRUDPS header;
+    std::list<std::unique_ptr<iovec>> recv_messages;
+    std::deque<std::unique_ptr<ShortMessage>> send_messages;
+    FrameTimer timer_for_send;
+public:
+
+    void Setup(long nano, uint8_t* key_) noexcept
     {
-        for (size_t i = 0; i < MNRU; ++i)
-        {
-            mudp.recv_mmhs[i].msg_hdr.msg_name = &recv_addrs[i];
-            mudp.recv_mmhs[i].msg_hdr.msg_namelen = sizeof(sockaddr_in);
-            mudp.recv_iovecs[i].iov_base = recv_msgs[i].array.data();
-            mudp.recv_iovecs[i].iov_len = recv_msgs[i].array.size();
-        }
+        key = key_;
+        timer_for_send.Setup(nano);
     }
 
-    void Run() noexcept
+    void UpdateRecv(
+            CMAC& cmac, 
+            std::unique_ptr<HeaderRUDPS> header,
+            std::unique_ptr<uint8_t> data,
+            int len) noexcept
     {
-        while (true)
+        cmac.Init(key);
+        cmac.Update(header->counter);
+        cmac.Update(header->id);
+        cmac.Update(header->seq);
+        cmac.Update(header->ack);
+
+        constexpr int header_size = HeaderSize();
+        if (len == header_size)
         {
-            clock_gettime(CLOCK_REALTIME_COARSE, &now_time);
-
-            for (size_t i = 0; i < users.size(); ++i)
+            cmac.Final(this->header.mac);
+            if (memcmp(this->header.mac, header->mac, CMAC_MAC_SIZE) != 0)
             {
-                if ((now_time.tv_sec - users[i].time.tv_sec) > 4)
-                    users.erase(i);
+                return;
             }
-
-            int recv_num = mudp.Recvmmsg();
-            if (recv_num > 0)
-                Update(recv_num);
-
-            for (size_t i = 0; i < MNSU; ++i)
-            {
-                mudp.send_mmhs[i].msg_hdr.msg_name = &send_addrs[i];
-                mudp.send_mmhs[i].msg_hdr.msg_namelen = sizeof(sockaddr_in);
-                mudp.send_iovecs[i].iov_base = send_msgs[i].array.data();
-                mudp.send_iovecs[i].iov_len = send_msgs[i].array.size();
-            }
-
-            int send_num = mudp.Sendmmsg();
-            if (send_num > 0)
-                for (size_t i = 0; i < send_num; ++i)
-                    send_msgs.pop_front();
         }
-    }
-
-    void Update(int recv_num) noexcept
-    {
-        for (size_t i = 0; i < recv_num; ++i)
+        else if (len > header_size)
         {
-            auto& recv_addr = mudp.recv_mmhs[i].msg_hdr.msg_name;
-            auto* recv_data = (uint8_t*)mudp.recv_iovecs[i].iov_base;
-            auto& recv_size = mudp.recv_mmhs[i].msg_len;
-
-            if (recv_size < HEADER_SIZE)
-                break;
-
-            FTM::Deserializer dese(recv_data, recv_size);
-            
-            // Authentication
-            const uint8_t* recv_mac;
-            uint16_t recv_id;
-            if ((!dese.Bytes(&recv_mac, CMAC::MAC_SIZE)) ||
-                (!dese.To(recv_id)))
-                break;
-
-            if (users.count(recv_id) == 0)
-                break;
-
-            auto& user = users[recv_id];
-
-            if (!cmac.Init(user.key))
+            std::list<std::unique_ptr<iovec>> iovecs;
+            for (int offset = 0; offset < len; )
             {
-                break;
-            }
-
-            if (!cmac.Update(&(recv_data[CMAC::MAC_SIZE]), recv_size - CMAC::MAC_SIZE))
-                break;
-
-            uint8_t mac[CMAC::MAC_SIZE];
-            if (!cmac.Final(mac))
-                break;
-
-            if (memcmp(mac, recv_mac, CMAC::MAC_SIZE) != 0)
-                break;
-
-
-            // Reliable
-            uint16_t recv_seq;
-            uint16_t recv_ack;
-            if  ((!dese.To(recv_seq)) ||
-                (!dese.To(recv_ack)) ||
-                (!dese.forward(sizeof(uint64_t))))
-                break;
-
-            std::list<uint8_t> sizes;
-            std::list<const uint8_t*> messages;
-
-            uint16_t seq_i;
-            for (seq_i = user.seq; i < recv_seq; ++i)
-            {
-                uint8_t size;
-                const uint8_t* message;
-                if ((!dese.To(size)) ||
-                    (!dese.Bytes(&message, size)))
-                    break;
-                
-                sizes.push_back(size);
-                messages.push_back(message);
-            }
-            if (seq_i != recv_seq)
-                break;
-
-            uint16_t ack_distance = (user.ack <= recv_ack) ?
-                recv_ack - user.ack :
-                user.ack - recv_ack ;
-
-            uint16_t ack_i;
-            for (ack_i = 0; ack_i < ack_distance; ++ack_i)
-            {
-                if (user.messages.empty())
+                uint8_t seq_len = *(uint8_t*)(data.get() + offset);
+                auto f = [&] 
                 {
-                    users.erase(recv_id);
+                    uint8_t* seq_data = data.get() + offset + sizeof(uint8_t);
+                    auto iovec_ptr = std::make_unique<iovec>();
+                    iovec_ptr->iov_base = seq_data;
+                    iovec_ptr->iov_len = seq_len;
+                    iovecs.push_back(std::move(iovec_ptr));
+                    cmac.Update(seq_data, seq_len);
+                    offset += seq_len;
+                };
+                size_t seq_size = header_size + offset + sizeof(uint8_t) + seq_len;
+                if ((size_t)len == seq_size)
+                {
+                    f();
                     break;
                 }
-                user.messages.pop_back();
-            }
-            if (ack_i != ack_distance)
-                break;
-
-            user.time = now_time;
-            user.seq = recv_seq;
-            user.ack = recv_ack;
-            
-            while (!messages.empty())
-            {
-                Receive(user, messages.back(), sizes.back());
-                messages.pop_back();
-                sizes.pop_back();
+                else if ((size_t)len > seq_size)
+                {
+                    f();
+                }
+                else
+                {
+                    return;
+                }
             }
 
-            Packet<MMU> packet;
-            packet.addr = user.addr;
-            FTM::Serializer seri(packet.array.data());
-            for (auto& message : user.messages)
+            cmac.Final(this->header.mac);
+            if (memcmp(this->header.mac, header->mac, CMAC_MAC_SIZE) != 0)
             {
-                seri.AddBytes(message.data(), message.size());
+                return;
             }
-            send_msgs.push_back(packet);
+
+            for (; this->header.ack != (header->seq + 1); ++this->header.ack)
+            {
+                recv_messages.push_back(std::move(iovecs.back()));
+                iovecs.pop_back();
+            }
+
+            for (; this->header.seq != (header->ack + 1); ++this->header.seq)
+            {
+                send_messages.pop_front();
+            }
         }
     }
 
-    void Receive(User<MMU>& user, const uint8_t* message, uint8_t size) noexcept
+    std::unique_ptr<iovec> Pop() noexcept
     {
-        
+        auto ptr = std::move(recv_messages.front());
+        recv_messages.pop_front();
+        return std::move(ptr);
     }
 
-    void Send(User<MMU>& user, const uint8_t* message, uint8_t size) noexcept
+    void Push(std::unique_ptr<ShortMessage> message) noexcept
     {
-        std::array<uint8_t, MMU> array;
-        memcpy(array.data(), message, size);
-        user.messages.push_front(array);
+        send_messages.push_back(std::move(message));
     }
 
+    void UpdateSend(Frame& frame, CMAC& cmac, SendQueue& send_queue) noexcept
+    {
+        timer_for_send.Update(frame);
+
+        if (timer_for_send.IsExpired())
+        {
+            auto packet = std::make_unique<Packet>();
+            auto& iovecs = packet->iovecs;
+            iovecs.resize(RUDPS_ELEMENT_SIZE);
+            size_t i = 0;
+            iovecs[i].iov_base  = header.mac;
+            iovecs[i++].iov_len = sizeof(header.mac);
+            cmac.Init(key);
+            iovecs[i].iov_base  = &header.counter;
+            iovecs[i++].iov_len = sizeof(header.counter);
+            cmac.Update(header.counter);
+            iovecs[i].iov_base  = &header.id;
+            iovecs[i++].iov_len = sizeof(header.id);
+            cmac.Update(header.id);
+            iovecs[i].iov_base  = &header.seq;
+            iovecs[i++].iov_len = sizeof(header.seq);
+            cmac.Update(header.seq);
+            iovecs[i].iov_base  = &header.ack;
+            iovecs[i++].iov_len = sizeof(header.ack);
+            cmac.Update(header.ack);
+            for (size_t j = 0; j < send_messages.size(); ++j)
+            {
+                auto& message = send_messages[j];
+                iovecs[i].iov_base  = &message->size;
+                iovecs[i++].iov_len = sizeof(message->size);
+                iovecs[i].iov_base  = message->data;
+                iovecs[i++].iov_len = sizeof(message->data);
+                cmac.Update(message->data, message->size);
+            }
+            cmac.Final(header.mac);
+            send_queue.Push(std::move(packet));
+            timer_for_send.Reset();
+        }
+    }
 };
 
-}
-
-}
-
-}
 
 int RUDPS_TEST()
 {
-    using namespace Latte::Linux::Network;
-    RUDPS<53548, 1000, 1000, 1000> rudps;
-    rudps.Run();
+    static uint8_t key[CMAC_KEY_SIZE] = {0};
+
+    RUDPS rudps;
+    rudps.Setup(SEND_INTERVAL, key);
+
+    Frame frame;
+    CMAC cmac;
+    SendQueue send_queue;
+
+    int is_server;
+
+    printf("0 or 1 : ");
+    scanf("%d", &is_server);
+    printf("\n");
+
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (is_server)
+    {
+        sockaddr_in addr = {0};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(4888);
+        addr.sin_addr.s_addr = INADDR_ANY;
+        bind(fd, (sockaddr*)&addr, sizeof(sockaddr_in));
+    }
+    else
+    {
+        sockaddr_in addr = {0};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(4888);
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    }
+    
+    msghdr recv_mh;
+    iovec iovecs[6];
+    recv_
+    auto header = std::make_unique<HeaderRUDPS>();
+    size_t i = 0;
+    iovecs[i].iov_base  = header->mac;
+    iovecs[i++].iov_len = sizeof(header->mac);
+    iovecs[i].iov_base  = &header->counter;
+    iovecs[i++].iov_len = sizeof(header->counter);
+    iovecs[i].iov_base  = &header->id;
+    iovecs[i++].iov_len = sizeof(header->id);
+    iovecs[i].iov_base  = &header->seq;
+    iovecs[i++].iov_len = sizeof(header->seq);
+    iovecs[i].iov_base  = &header->ack;
+    iovecs[i++].iov_len = sizeof(header->ack);
+    while (true)
+    {
+        frame.Update();
+
+        rudps.UpdateRecv(cmac, 
+        rudps.UpdateSend(frame, cmac, send_queue);
+    }
+
     return 0;
 }
 
