@@ -22,8 +22,8 @@ public:
         , dhl {}
         , cmac {}
     {
-        OnRecvs[TYPE_SMTPS_CONTACT]   = &SMTPSServer::OnRecvContact;
-        OnRecvs[TYPE_SMTPS_AUTH]   = &SMTPSServer::OnRecvAuth;
+        OnRecvs[TYPE_SMTPS_CONTACT] = &SMTPSServer::OnRecvContact;
+        OnRecvs[TYPE_SMTPS_AUTH]    = &SMTPSServer::OnRecvAuth;
         OnRecvs[TYPE_SMTPS_MESSAGE] = &SMTPSServer::OnRecvMessage;
         OnRecvs[TYPE_SMTPS_LOGOUT]  = &SMTPSServer::OnRecvLogout;
     }
@@ -82,7 +82,9 @@ private:
                 iovs[1].iov_len     = sizeof(contact->nonce);
                 iovs[2].iov_base    = dhl.public_key;
                 iovs[2].iov_len    = sizeof(dhl.public_key);
-                Send(std::move(address_), std::move(iovs_ptr));
+                auto send_packet = std::make_unique<SendPacket>(
+                    std::move(address_), std::move(iovs_ptr));
+                Send(std::move(send_packet));
             }
         }
     }

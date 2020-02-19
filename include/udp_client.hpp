@@ -10,7 +10,6 @@
 #include <deque>
 
 #include <udp_def.hpp>
-#include <idisposable.hpp>
 
 #define UDP_CLIENT_MMRU 8
 #define UDP_CLIENT_MMSU 8
@@ -56,14 +55,13 @@ private:
     private:
         iovec iov;
     };
+public:
     struct SendPacket
     {
     public:
         explicit SendPacket(
-            std::unique_ptr<std::vector<iovec>>&& iovs_,
-            std::unique_ptr<IDisposable>&& disposable_) noexcept
+            std::unique_ptr<std::vector<iovec>>&& iovs_) noexcept
             : iovs {std::move(iovs_)}
-            , disposable {std::move(disposable_)}
         {
         }
 
@@ -78,13 +76,8 @@ private:
             msg_hdr.msg_flags       = 0;
         }
 
-        void Dispose() noexcept
-        {
-            disposable->Dispose();
-        }
     private:
         std::unique_ptr<std::vector<iovec>> iovs;
-        std::unique_ptr<IDisposable> disposable;
     };
 public:
     explicit UDPClient(uint16_t port, const char* address) noexcept
@@ -142,7 +135,6 @@ public:
         const int send_result = sendmmsg(socket_fd, send_mmhs, send_size, MSG_DONTWAIT);
         for (int i = 0; i < send_result; ++i)
         {
-            send_packets.front()->Dispose();
             send_packets.pop_front();
         }
     }
@@ -156,14 +148,9 @@ public:
             : client {client_}
         {
         }
-        void operator()(
-            std::unique_ptr<std::vector<iovec>>&& iovs_, 
-            std::unique_ptr<IDisposable>&& disposable_ = std::make_unique<EmptyDisposable>()) noexcept
+        void operator()(std::unique_ptr<SendPacket>&& send_packet) noexcept
         {
-            client.send_packets.push_back
-            (
-                std::make_unique<SendPacket>(std::move(iovs_), std::move(disposable_))
-            );
+            client.send_packets.push_back(std::move(send_packet));
         }
     private:
         UDPClient& client;

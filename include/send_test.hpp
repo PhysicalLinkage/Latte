@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 
-static int TEST_TEST()
+static int SEND_TEST_TEST()
 {
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     sockaddr_in addr;

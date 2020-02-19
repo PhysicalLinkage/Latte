@@ -26,7 +26,8 @@ public:
         auto iovs = std::make_unique<std::vector<iovec>>(1);
         iovs->front().iov_base = &type;
         iovs->front().iov_len = sizeof(type);
-        UDPClient::Send(std::move(iovs));
+        auto sp = std::make_unique<SendPacket>(std::move(iovs));
+        UDPClient::Send(std::move(sp));
     }
 
     void Update() noexcept
@@ -44,12 +45,15 @@ private:
         (this->*OnRecvs[type])(std::move(packet_));
     }
 
-    class ContactDisposable : public IDisposable
+    class ContactPacket : public SendPacket
     {
     public:
-        explicit ContactDisposable(std::unique_ptr<Packet>&& packet_) noexcept
-            : packet {std::move(packet_)} {}
-        void Dispose() noexcept override {}
+        explicit ContactPacket(
+                std::unique_ptr<std::vector<iovec>> iovs_,
+                std::unique_ptr<Packet> packet_) noexcept
+            : SendPacket {std::move(iovs_)} 
+            , packet {std::move(packet_)}
+        {}
     private:
         std::unique_ptr<Packet> packet;
     };
@@ -78,7 +82,8 @@ private:
         iovs[0].iov_len = SMTPS_TYPE_BYTES + SMTPS_CONTACT_NONCE_BYTES;
         iovs[1].iov_base = dhl.public_key;
         iovs[1].iov_len = sizeof(dhl.public_key);
-        UDPClient::Send(std::move(iovs_), std::make_unique<ContactDisposable>(std::move(packet_)));
+        UDPClient::Send(std::make_unique<ContactPacket>(
+                    std::move(iovs_), std::move(packet_)));
         printf("contact complete\n");
     }
 
@@ -288,7 +293,9 @@ private:
                 cmac.Update(message->data, message->size);
             }
             cmac.Final(mac);
-            UDPClient::Send(std::move(iovecs_ptr));
+            auto sp = std::make_unique<UDPClient::SendPacket>(
+                    std::move(iovecs_ptr));
+            UDPClient::Send(std::move(sp));
             timer_for_send.Reset();
         }
     }

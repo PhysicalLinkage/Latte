@@ -10,7 +10,6 @@
 #include <deque>
 
 #include <udp_def.hpp>
-#include <idisposable.hpp>
 
 #define UDP_SERVER_MMRU 8
 #define UDP_SERVER_MMSU 8
@@ -62,16 +61,15 @@ private:
         std::unique_ptr<Packet> packet;
         iovec iov;
     };
+public:
     struct SendPacket
     {
     public:
         explicit SendPacket(
             std::unique_ptr<sockaddr_in>&& address_,
-            std::unique_ptr<std::vector<iovec>>&& iovs_,
-            std::unique_ptr<IDisposable>&& disposable_) noexcept
+            std::unique_ptr<std::vector<iovec>>&& iovs_) noexcept
             : address {std::move(address_)}
             , iovs {std::move(iovs_)}
-            , disposable {std::move(disposable_)}
         {
         }
 
@@ -86,14 +84,9 @@ private:
             msg_hdr.msg_flags       = 0;
         }
 
-        void Dispose() noexcept
-        {
-            disposable->Dispose();
-        }
     private:
         std::unique_ptr<sockaddr_in> address;
         std::unique_ptr<std::vector<iovec>> iovs;
-        std::unique_ptr<IDisposable> disposable;
     };
 public:
     explicit UDPServer(uint16_t port) noexcept
@@ -155,7 +148,6 @@ public:
         const int send_result = sendmmsg(socket_fd, send_mmhs, send_size, MSG_DONTWAIT);
         for (int i = 0; i < send_result; ++i)
         {
-            send_packets.front()->Dispose();
             send_packets.pop_front();
         }
     }
@@ -169,15 +161,9 @@ public:
             : server {server_}
         {
         }
-        void operator()(
-            std::unique_ptr<sockaddr_in>&& address_, 
-            std::unique_ptr<std::vector<iovec>>&& iovs_, 
-            std::unique_ptr<IDisposable>&& disposable_ = std::make_unique<EmptyDisposable>()) noexcept
+        void operator()(std::unique_ptr<SendPacket>&& send_packet) noexcept
         {
-            server.send_packets.push_back
-            (
-                std::make_unique<SendPacket>(std::move(address_), std::move(iovs_), std::move(disposable_))
-            );
+            server.send_packets.push_back(std::move(send_packet));
         }
     private:
         UDPServer& server;
@@ -192,6 +178,7 @@ private:
     mmsghdr send_mmhs[UDP_SERVER_MMSU];
     std::deque<std::unique_ptr<SendPacket>> send_packets;
 };
+
 
 #endif
 

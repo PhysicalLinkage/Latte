@@ -220,7 +220,9 @@ public:
             cmac.Final(mac);
             auto addr = std::make_unique<sockaddr_in>();
             *addr = address;
-            Send(std::move(addr), std::move(iovecs_ptr));
+            auto sp = std::make_unique<UDPServer::SendPacket>(
+                    std::move(addr), std::move(iovecs_ptr));
+            Send(std::move(sp));
             timer_for_send.Reset();
         
         }

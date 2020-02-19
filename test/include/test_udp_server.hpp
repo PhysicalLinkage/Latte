@@ -3,10 +3,15 @@
 
 class TestServer : public UDPServer
 {
-    class Disposable : public IDisposable
+    class TestPacket : public SendPacket
     {
     public: 
-        void Dispose() noexcept override
+        explicit TestPacket(
+                std::unique_ptr<sockaddr_in> address,
+                std::unique_ptr<std::vector<iovec>> iovs) noexcept
+            : SendPacket {std::move(address), std::move(iovs)}
+        {}
+        ~TestPacket() noexcept
         {
             printf("send end\n");  
         }
@@ -26,7 +31,7 @@ private:
         auto iovs = std::make_unique<std::vector<iovec>>(1);
         iovs->front().iov_base = message;
         iovs->front().iov_len = sizeof(message);
-        Send(std::move(address_), std::move(iovs), std::make_unique<Disposable>());
+        Send(std::make_unique<TestPacket>(std::move(address_), std::move(iovs)));
     }
 };
 
