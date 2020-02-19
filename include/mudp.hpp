@@ -13,7 +13,7 @@
 template<uint16_t PORT>
 struct MUDP
 {
-    const int           socket_fd;
+    const int socket_fd;
 
     explicit MUDP() noexcept
         : socket_fd {socket(AF_INET, SOCK_DGRAM|SOCK_NONBLOCK, 0)}
@@ -64,20 +64,13 @@ int MUDP_TEST()
 {
     MUDP<4888> mudp;
 
-    struct packet
-    {
-        uint8_t id;
-        float x;
-        float y;
-    };
 
-    constexpr size_t MNU = 10;
-    constexpr size_t IOV_LEN = 3;
+    constexpr size_t MNU = 4;
 
     mmsghdr mmhs[MNU];
     sockaddr_in addrs[MNU];
-    iovec iovs[MNU][IOV_LEN];
-    packet packets[MNU];
+    iovec iovs[MNU];
+    uint8_t data[512];
     
 
     for (size_t i = 0; i < MNU; ++i)
@@ -86,15 +79,10 @@ int MUDP_TEST()
         msg_hdr.msg_name    = &addrs[i];
         msg_hdr.msg_namelen = sizeof(sockaddr_in);
         auto& iov           = iovs[i];
-        msg_hdr.msg_iov     = iovs[i];
-        msg_hdr.msg_iovlen  = IOV_LEN;
-        auto& packet        = packets[i];
-        iov[0].iov_base     = &packet.id;
-        iov[0].iov_len      = sizeof(packet.id);
-        iov[1].iov_base     = &packet.x;
-        iov[1].iov_len      = sizeof(packet.x);
-        iov[2].iov_base     = &packet.y;
-        iov[2].iov_len      = sizeof(packet.y);
+        msg_hdr.msg_iov     = &iov;
+        msg_hdr.msg_iovlen  = 1;
+        iov.iov_base        = &data;
+        iov.iov_len         = sizeof(data);
     }
 
     while (true)
@@ -102,11 +90,13 @@ int MUDP_TEST()
         int recv_size = mudp.Recvmmsg(mmhs, MNU);
         if (recv_size > 0)
         {
+            printf("recv\n");
             for (int i = 0; i < recv_size; ++i)
             {
-                auto& p = packets[i];
-                printf("id      : %d\n", p.id);
-                printf("(x, y)  : (%f, %f)\n", p.x, p.y);
+                size_t size = mmhs[i].msg_len;
+                printf("packet size : %u\n", size);
+                printf("packet data : %s\n", data);
+                iovs[i].iov_len = size;
             }
             mudp.Sendmmsg(mmhs, recv_size);
         }

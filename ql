@@ -7,15 +7,15 @@ INCLUDES="-Iinclude"
 LIBS="-lcrypto"
 TEST_INCLUDES="-Iinclude -Itest/include"
 
-OBJ_DIR="build/object/"
+OBJ_DIR="build/object/" 
 TEST_OBJ_DIR="test/build/object/"
 
 CPP_FILES=`find src/*.cpp`
 TEST_CPP_FILES=`find test/src/*.cpp`
 ALL_OBJ_FILES=`find * -name *.o`
 MAKEFILE="Makefile"
-MAIN_TEST="test/src/main_test.cpp"
-TEST_HPP=$1
+MAIN_TEST="test/build/main_test.cpp"
+TEST_HPP=$2
 TEST_APP="test/build/app/test.app"
 
 makefile-all()
@@ -67,6 +67,7 @@ update-makefile()
 
 test-cpp()
 {
+    update-makefile
     make
 
     echo $TEST_HPP
@@ -90,8 +91,9 @@ test-cpp()
 
 
 case $1 in
-    "update-makefile" ) update-makefile ;;
-    * )                 test-cpp        ;;
+    "update-makefile"   ) update-makefile   ;;
+    "test-cpp"          ) test-cpp          ;;
+    *                   ) echo "error"      ;;
 esac
 
 

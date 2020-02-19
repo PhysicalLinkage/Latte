@@ -6,11 +6,13 @@
 #include <stdint.h>
 #include <arpa/inet.h>
 
+#include <memory>
+#include <vector>
+
 #define MTU 512
 
 struct Packet
 {
-    iovec io;
     sockaddr_in address;
     uint8_t data[MTU];
     size_t size;
@@ -18,11 +20,9 @@ struct Packet
 
 struct Packet256
 {
-    iovec io;
     sockaddr_in address;
     uint8_t data[UINT8_MAX];
     uint8_t byte_size;
 };
 
 #endif
-
