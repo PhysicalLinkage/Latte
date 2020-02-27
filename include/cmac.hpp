@@ -57,7 +57,7 @@ int CMAC_TEST()
         0x2b,0x7e,0x15,0x16, 0x28,0xae,0xd2,0xa6,
         0xab,0xf7,0x15,0x88, 0x09,0xcf,0x4f,0x3c,
     };
-    uint8_t message[] = "AYAYA";
+    uint8_t message[] = "fefaoiefhugeeAYA";
     uint8_t mac[CMAC_MAC_SIZE];
 
 
@@ -65,6 +65,7 @@ int CMAC_TEST()
         return 1;
     if (!cmac.Update(message, sizeof(message)))
         return 1;
+    //cmac.Update(message + 2, sizeof(message) - 2);
     if (!cmac.Final(mac))
         return 1;
 

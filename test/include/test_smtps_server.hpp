@@ -4,19 +4,25 @@
 class MySMTPS : public SMTPS
 {
 public:
-    void OnRecv(std::unique_ptr<iovec>&& iov) noexcept
+    void OnRecv(
+            std::unique_ptr<std::vector<iovec>>&& iovs, 
+            std::unique_ptr<UDPServer::Packet>&& packet) noexcept override
     {
-       printf("my smtps\n");
+        for (int i = iovs->size() - 1; i >= 0; --i)
+        {
+            printf("%s\n", (char*)(*iovs)[i].iov_base);
+        }
     }
 };
 
 int test_smtps_server()
 {
+    Frame frame;
     SMTPSServer<MySMTPS> server(4888);
     for (;;)
     {
-        Frame.Update();
-        server.Update();
+        frame.Update();
+        server.Update(frame);
     }
 
 }

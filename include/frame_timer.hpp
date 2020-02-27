@@ -17,9 +17,9 @@ public:
         timer = interval = (nano <= 0) ? 0 : nano;
     }
 
-    void Update() noexcept
+    void Update(Frame& frame) noexcept
     {
-        timer -= Frame.DeltaTime();
+        timer -= frame.DeltaTime();
     }
 
     void Reset() noexcept

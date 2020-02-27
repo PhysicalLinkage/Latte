@@ -7,8 +7,10 @@
 
 int test_frame()
 {
-    printf("Time        : %lus\n", Frame.Time());
-    printf("Nano time   : %luns\n", Frame.NanoTime());
+    Frame frame;
+
+    printf("Time        : %lus\n", frame.Time());
+    printf("Nano time   : %luns\n", frame.NanoTime());
     printf("\n");
 
     auto heavy = []
@@ -22,9 +24,9 @@ int test_frame()
 
     for (size_t i = 0; i < 8; ++i)
     {
-        Frame.Update();
-        printf("Frame count : %lu\n", Frame.Count());
-        printf("Delta time  : %ldns\n", Frame.DeltaTime());
+        frame.Update();
+        printf("Frame count : %lu\n", frame.Count());
+        printf("Delta time  : %ldns\n", frame.DeltaTime());
 
         heavy();
         printf("Heavy\n");

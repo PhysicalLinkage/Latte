@@ -164,7 +164,8 @@ private:
         }
         else if (data_size > header_size)
         {
-            std::list<std::unique_ptr<iovec>> iovecs;
+            auto iovs = std::make_unique<std::vector<iovec>>(16);
+            iovs->resize(0);
             for (int offset = header_size; offset < data_size; )
             {
                 uint8_t seq_len = *(uint8_t*)(data + offset);
@@ -173,9 +174,9 @@ private:
                 {
                     uint8_t* seq_data = data + offset + sizeof(uint8_t);
                     auto iovec_ptr = std::make_unique<iovec>();
-                    iovec_ptr->iov_base = seq_data;
-                    iovec_ptr->iov_len = seq_len;
-                    iovecs.push_back(std::move(iovec_ptr));
+                    iovs->resize(iovs->size() + 1);
+                    iovs->back().iov_base = seq_data;
+                    iovs->back().iov_len = seq_len;
                     cmac.Update(seq_data, seq_len);
                     offset += seq_len + sizeof(uint8_t);
                     break;
@@ -184,9 +185,9 @@ private:
                 {
                     uint8_t* seq_data = data + offset + sizeof(uint8_t);
                     auto iovec_ptr = std::make_unique<iovec>();
-                    iovec_ptr->iov_base = seq_data;
-                    iovec_ptr->iov_len = seq_len;
-                    iovecs.push_back(std::move(iovec_ptr));
+                    iovs->resize(iovs->size() + 1);
+                    iovs->back().iov_base = seq_data;
+                    iovs->back().iov_len = seq_len;
                     cmac.Update(seq_data, seq_len);
                     offset += seq_len + sizeof(uint8_t);
                 }
@@ -203,14 +204,9 @@ private:
                 return;
             }
 
-            for (; this->header.ack != header.seq; ++this->header.ack)
-            {
-                OnRecv(std::move(iovecs.back()));
-                iovecs.pop_back();
-            }
-
-            printf("recv_ack = %u\n", recv_ack);
-            printf("header.ack %u\n", header.ack);
+            iovs->resize(header.seq - this->header.ack);
+            OnRecv(std::move(iovs), std::move(packet_));
+            this->header.ack = header.seq;
 
             for (; recv_ack != header.ack; ++recv_ack)
             {
@@ -240,7 +236,7 @@ private:
         timer_for_send.Setup(1e9);
     }
 
-    void OnRecv(std::unique_ptr<iovec>&& iov) noexcept
+    void OnRecv(std::unique_ptr<std::vector<iovec>>&& iovs, std::unique_ptr<Packet>&& source) noexcept
     {
         printf("client ok\n");
     }

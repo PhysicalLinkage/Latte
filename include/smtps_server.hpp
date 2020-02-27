@@ -28,12 +28,12 @@ public:
         OnRecvs[TYPE_SMTPS_LOGOUT]  = &SMTPSServer::OnRecvLogout;
     }
     
-    void Update() noexcept
+    void Update(Frame& frame) noexcept
     {
         RecvUpdate();
         for (auto& smtps : smtpss)
         {
-            smtps->UpdateSend(cmac, Send);
+            smtps->UpdateSend(frame, cmac, Send);
         }
         SendUpdate();
     }
@@ -156,7 +156,7 @@ private:
         }
         auto& smtps = smtpss[header.id];
         smtps->address = *address_;
-        smtps->UpdateRecv(cmac, data, data_size);
+        smtps->UpdateRecv(cmac, std::move(packet_));
     }
 
 

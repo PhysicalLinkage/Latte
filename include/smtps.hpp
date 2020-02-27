@@ -82,9 +82,11 @@ public:
 
     void UpdateRecv(
             CMAC& cmac, 
-            uint8_t* data,
-            uint16_t data_size) noexcept
+            std::unique_ptr<UDPServer::Packet>&& packet) noexcept
     {
+        uint8_t* data = packet->data + 1;
+        uint16_t data_size = packet->size - 1;
+
         HeaderSMTPS header;
 
         header.Setup(data);
@@ -97,7 +99,9 @@ public:
 
         printf("seq = %u\n", this->header.seq);
         printf("ack = %u\n", this->header.ack);
-        printf("remote ack = %u\n", recv_ack);
+        printf("prev ack = %u\n", recv_ack);
+        printf("recv ctr = %u\n", header.counter);
+        printf("recv id  = %u\n", header.id);
         printf("recv seq = %u\n", header.seq);
         printf("recv ack = %u\n", header.ack);
         printf("recv data= %u\n", data_size);
@@ -121,7 +125,8 @@ public:
         }
         else if (data_size > header_size)
         {
-            std::list<std::unique_ptr<iovec>> iovecs;
+            auto iovs = std::make_unique<std::vector<iovec>>(16);
+            iovs->resize(0);
             for (int offset = header_size; offset < data_size; )
             {
                 uint8_t seq_len = *(uint8_t*)(data + offset);
@@ -129,10 +134,9 @@ public:
                 if ((size_t)data_size == seq_size)
                 {
                     uint8_t* seq_data = data + offset + sizeof(uint8_t);
-                    auto iovec_ptr = std::make_unique<iovec>();
-                    iovec_ptr->iov_base = seq_data;
-                    iovec_ptr->iov_len = seq_len;
-                    iovecs.push_back(std::move(iovec_ptr));
+                    iovs->resize(iovs->size() + 1);
+                    iovs->back().iov_base = seq_data;
+                    iovs->back().iov_len = seq_len;
                     cmac.Update(seq_data, seq_len);
                     offset += seq_len + sizeof(uint8_t);
                     break;
@@ -140,10 +144,9 @@ public:
                 else if ((size_t)data_size > seq_size)
                 {
                     uint8_t* seq_data = data + offset + sizeof(uint8_t);
-                    auto iovec_ptr = std::make_unique<iovec>();
-                    iovec_ptr->iov_base = seq_data;
-                    iovec_ptr->iov_len = seq_len;
-                    iovecs.push_back(std::move(iovec_ptr));
+                    iovs->resize(iovs->size() + 1);
+                    iovs->back().iov_base = seq_data;
+                    iovs->back().iov_len = seq_len;
                     cmac.Update(seq_data, seq_len);
                     offset += seq_len + sizeof(uint8_t);
                 }
@@ -156,14 +159,13 @@ public:
             cmac.Final(mac);
             if (memcmp(mac, header.mac, CMAC_MAC_SIZE) != 0)
             {
+                printf("mac error\n");
                 return;
             }
 
-            for (; this->header.ack != header.seq; ++this->header.ack)
-            {
-                OnRecv(std::move(iovecs.back()));
-                iovecs.pop_back();
-            }
+            iovs->resize(header.seq - this->header.ack);
+            OnRecv(std::move(iovs), std::move(packet));
+            this->header.ack = header.seq;
 
             for (; recv_ack != header.ack; ++recv_ack)
             {
@@ -172,7 +174,9 @@ public:
         }
     }
 
-    virtual void OnRecv(std::unique_ptr<iovec>&& iov) = 0;
+    virtual void OnRecv(
+            std::unique_ptr<std::vector<iovec>>&& iovs, 
+            std::unique_ptr<UDPServer::Packet>&& packet) = 0;
 
     void Send(std::unique_ptr<ShortMessage>&& message) noexcept
     {
@@ -180,9 +184,9 @@ public:
         send_messages.push_back(std::move(message));
     }
 
-    void UpdateSend(CMAC& cmac, UDPServer::SendMethod& Send) noexcept
+    void UpdateSend(Frame& frame, CMAC& cmac, UDPServer::SendMethod& Send) noexcept
     {
-        timer_for_send.Update();
+        timer_for_send.Update(frame);
 
         if (timer_for_send.IsExpired())
         {

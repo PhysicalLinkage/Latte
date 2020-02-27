@@ -6,6 +6,7 @@
 
 int test_frame_timer()
 {
+    Frame frame;
     FrameTimer timer;
 
     timer.Setup(1e9);
@@ -16,8 +17,8 @@ int test_frame_timer()
 
     while (s <= 8)
     {
-        Frame.Update();
-        timer.Update();
+        frame.Update();
+        timer.Update(frame);
 
         if (timer.IsExpired())
         {

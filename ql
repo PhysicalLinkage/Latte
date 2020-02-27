@@ -10,11 +10,11 @@ TEST_INCLUDES="-Iinclude -Itest/include"
 OBJ_DIR="build/object/" 
 TEST_OBJ_DIR="test/build/object/"
 
-CPP_FILES=`find src/*.cpp`
-TEST_CPP_FILES=`find test/src/*.cpp`
-ALL_OBJ_FILES=`find * -name *.o`
+#CPP_FILES=`find src/*.cpp`
+#TEST_CPP_FILES=`find test/src/*.cpp`
+#ALL_OBJ_FILES=`find * -name *.o`
 MAKEFILE="Makefile"
-MAIN_TEST="test/build/main_test.cpp"
+MAIN_TEST="test/src/main_test.cpp"
 TEST_HPP=$2
 TEST_APP="test/build/app/test.app"
 
@@ -61,16 +61,13 @@ makefile-dependence()
 
 update-makefile()
 {
+
     makefile-all        >   $MAKEFILE
     makefile-dependence >>  $MAKEFILE
 }
 
 test-cpp()
 {
-    update-makefile
-    make
-
-    echo $TEST_HPP
     base=`basename $TEST_HPP`
     func=${base/.hpp}
 
@@ -82,13 +79,12 @@ test-cpp()
     echo "    return ${func}();"    >>  $MAIN_TEST
     echo "}"                        >>  $MAIN_TEST
     echo ""                         >>  $MAIN_TEST
+    
 
-    rm $TEST_APP
-    $CXX $VERTION $OPTION $TEST_INCLUDES $LIBS $MAIN_TEST $ALL_OBJ_FILES -o $TEST_APP
+    $CXX $VERTION $OPTION $TEST_INCLUDES $LIBS $MAIN_TEST -o $TEST_APP
     rm $MAIN_TEST
     $TEST_APP
 }
-
 
 case $1 in
     "update-makefile"   ) update-makefile   ;;
