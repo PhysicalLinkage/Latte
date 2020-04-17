@@ -1,4 +1,4 @@
-#!/usr/bin/bash
+#!/bin/bash
 
 CXX="g++"
 VERTION="-std=c++17"
@@ -81,7 +81,7 @@ test-cpp()
     echo ""                         >>  $MAIN_TEST
     
 
-    $CXX $VERTION $OPTION $TEST_INCLUDES $LIBS $MAIN_TEST -o $TEST_APP
+    $CXX $VERTION $OPTION $TEST_INCLUDES $MAIN_TEST -o $TEST_APP $LIBS
     rm $MAIN_TEST
     $TEST_APP
 }

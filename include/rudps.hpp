@@ -93,6 +93,7 @@ struct iovec8
 class RUDPS
 {
 public:
+    CMAC m_cmac;
 
     struct SendPacket
     {
@@ -168,7 +169,7 @@ public:
         }
         else if (data_size > header_size)
         {
-            auto iovs = std::make_unique<std::vector<iovec>>(16);
+            auto iovs = std::make_unique<std::deque<iovec>>(16);
             iovs->resize(0);
             for (int offset = header_size; offset < data_size; )
             {
@@ -218,11 +219,15 @@ public:
 
             if (distance != 0)
             {
+                /*
                 printf("recv----------\n");
                 Print();
                 Print(recv_header, data_size);
-                
-                iovs->resize(distance);
+                */
+                while (iovs->size() != distance)
+                {
+                    iovs->pop_front();
+                }
                 OnRecv(std::move(iovs), std::move(message));
                 this->header.ack = recv_header.seq;
 
@@ -242,6 +247,51 @@ public:
     {
         ++header.seq;
         send_packets.push_back(std::move(send_packet));
+
+        auto iovecs_ptr = std::make_unique<std::vector<iovec>>(
+                1 + RUDPS_ELEMENT_SIZE + (send_packets.size() * IOV8_MAX));
+        auto& iovecs = *iovecs_ptr;
+        size_t i = 0;
+        static uint8_t type = 2;
+        iovecs[i].iov_base  = &type;
+        iovecs[i++].iov_len = sizeof(type);
+        iovecs[i].iov_base  = mac;
+        iovecs[i++].iov_len = sizeof(mac);
+        m_cmac.Init(key);
+        ++header.counter;
+        iovecs[i].iov_base  = &header.counter;
+        iovecs[i++].iov_len = sizeof(header.counter);
+        m_cmac.Update(header.counter);
+        iovecs[i].iov_base  = &header.id;
+        iovecs[i++].iov_len = sizeof(header.id);
+        m_cmac.Update(header.id);
+        iovecs[i].iov_base  = &header.seq;
+        iovecs[i++].iov_len = sizeof(header.seq);
+        m_cmac.Update(header.seq);
+        iovecs[i].iov_base  = &header.ack;
+        iovecs[i++].iov_len = sizeof(header.ack);
+        m_cmac.Update(header.ack);
+        
+        for (auto& packet : send_packets)
+        {
+            size_t size_i = i++;
+            packet->total = 0;
+            for (auto iov : packet->iovs)
+            {
+                iovecs[i].iov_base  = iov.iov_base;
+                iovecs[i++].iov_len = iov.iov_len;
+                m_cmac.Update(iov.iov_base, iov.iov_len);
+                packet->total += iov.iov_len;
+            }
+            iovecs[size_i].iov_base = &packet->total;
+            iovecs[size_i].iov_len = sizeof(packet->total);
+        }
+
+        m_cmac.Final(mac);
+        iovecs.resize(i);
+
+        OnSend(std::move(iovecs_ptr));
+        timer_for_send.Reset();
     }
 
     void SendUpdate(Frame& frame, CMAC& cmac) noexcept
@@ -298,7 +348,7 @@ public:
     }
 protected:
     virtual void OnRecv(
-            std::unique_ptr<std::vector<iovec>>&& iovs,
+            std::unique_ptr<std::deque<iovec>>&& iovs,
             std::unique_ptr<Message>&& message) = 0;
     
     virtual void OnSend(

@@ -26,7 +26,7 @@ public:
     }
 private:
     void OnRecv(
-            std::unique_ptr<std::vector<iovec>>&& iovs,
+            std::unique_ptr<std::deque<iovec>>&& iovs,
             std::unique_ptr<Message>&& message) noexcept override;
 
     void OnSend(std::unique_ptr<std::vector<iovec>>&& iovs) noexcept override;
@@ -218,7 +218,7 @@ private:
 };
 
 void SRUDPS::OnRecv(
-        std::unique_ptr<std::vector<iovec>>&& iovs,
+        std::unique_ptr<std::deque<iovec>>&& iovs,
         std::unique_ptr<Message>&& message) noexcept
 {
     std::shared_ptr msg(std::move(message));

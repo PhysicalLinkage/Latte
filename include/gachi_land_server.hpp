@@ -15,7 +15,6 @@
 
 constexpr size_t GL_TYPE_POW2_SIZE = Pow2(Log2(GL_TYPE_SIZE-1)+1);
 
-
 class GachiLandServer : public ServerRUDPS
 {
     constexpr static size_t    SIZE         = UINT16_MAX + 1;
@@ -35,7 +34,7 @@ private:
         uint16_t id;
     };
 
-    // map from rudps id to world and room number
+    // map from login id to rudps id
     ID id_map[SIZE];
     
 public:
@@ -62,9 +61,14 @@ public:
     }
 private:
 
+    bool is_range_id(uint16_t id) noexcept
+    {
+        return id < SIZE;
+    }
+
     uint16_t Index(uint16_t world_i, uint16_t room_i, uint16_t number_i) noexcept
     {
-        return world_i * WORLD_SIZE + room_i * ROOM_SIZE + number_i;
+        return world_i * WORLD_NUMBER + room_i * ROOM_NUMBER + number_i;
     }
 
     uint16_t RoomUsedTotal(uint16_t world_i, uint16_t room_i) noexcept
@@ -80,12 +84,11 @@ private:
     uint16_t WorldUsedTotal(uint16_t world_i) noexcept
     {
         uint16_t total = 0;
-        for (uint16_t room_i = 0; room_i < WORLD_SIZE; ++room_i)
+        for (uint16_t room_i = 0; room_i < ROOM_NUMBER; ++room_i)
         {
             total += RoomUsedTotal(world_i, room_i);
         }
         return total;
-
     }
 
     void OnRecv(
@@ -202,7 +205,7 @@ private:
         uint16_t id;
     };
 
-     Login Add(
+    Login Add(
         uint16_t    world_i,
         uint16_t    room_i,
         uint16_t    rudps_id) noexcept
@@ -278,11 +281,47 @@ private:
     {
     }
 
+    struct TurnPacket : public RUDPS::SendPacket
+    {
+        std::shared_ptr<Message> message;
+    };
+
     void OnRecvTurn(
         SRUDPS& rudps,
         iovec& iov,
         std::shared_ptr<Message> message) noexcept
     {
+        auto& login_id = *(uint16_t*)((uint8_t*)iov.iov_base + sizeof(uint8_t));
+        auto& destination_id = *(uint16_t*)((uint8_t*)iov.iov_base + sizeof(uint8_t) + sizeof(uint16_t) * 2);
+
+        if (!is_range_id(login_id))
+        {
+            return;
+        }
+
+        if (!is_range_id(destination_id))
+        {
+            return;
+        }
+
+        if (!id_map[login_id].is_used)
+        {
+            return;
+        }
+
+        auto& destination = id_map[destination_id];
+
+        if (!destination.is_used)
+        {
+            return;
+        }
+
+        auto packet = std::make_unique<TurnPacket>();
+        packet->iovs.resize(1);
+        packet->iovs[0].iov_base = iov.iov_base;
+        packet->iovs[0].iov_len = iov.iov_len;
+        packet->message = std::move(message);
+        rudpss[destination.id]->Send(std::move(packet));
     }
 
     void OnRecvRoomTurn(
@@ -290,6 +329,54 @@ private:
         iovec& iov,
         std::shared_ptr<Message> message) noexcept
     {
+        printf("rudps: ");
+        for (size_t i = 0; i < iov.iov_len; ++i)
+        {
+            printf("%c", *((uint8_t*)iov.iov_base + i));
+        }
+        printf("\n");
+        auto& login_id = *(uint16_t*)((uint8_t*)iov.iov_base + sizeof(uint8_t));
+        auto& world_i = *(uint16_t*)((uint8_t*)iov.iov_base + sizeof(uint8_t) + sizeof(uint16_t) * 2);
+        auto& room_i = *(uint16_t*)((uint8_t*)iov.iov_base + sizeof(uint8_t) + sizeof(uint16_t) * 3);
+
+        if (!is_range_id(login_id))
+        {
+            return;
+        }
+
+        if (world_i >= WORLD_SIZE)
+        {
+            return;
+        }
+
+        if (room_i >= ROOM_NUMBER)
+        {
+            return;
+        }
+        
+        for (uint16_t number_i = 0; number_i < ROOM_SIZE; ++number_i)
+        {
+            auto destination_i = Index(world_i, room_i, number_i);
+
+            if (login_id == destination_i)
+            {
+                continue;
+            }
+
+            auto& destination = id_map[destination_i];
+
+            if (!destination.is_used)
+            {
+               continue;
+            }
+
+            auto packet = std::make_unique<TurnPacket>();
+            packet->iovs.resize(1);
+            packet->iovs[0].iov_base = iov.iov_base;
+            packet->iovs[0].iov_len = iov.iov_len;
+            packet->message = std::move(message);
+            rudpss[destination.id]->Send(std::move(packet));
+        }
     }
 
     void OnRecvEmpty(
