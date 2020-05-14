@@ -27,19 +27,11 @@ private:
         (SRUDPS& rudps,
          iovec& iov,
          std::shared_ptr<Message> message);
-
-    struct ID
-    {
-        bool is_used;
-        uint16_t id;
-    };
-
-    // map from login id to rudps id
-    ID id_map[SIZE];
-    
 public:
     explicit GachiLandServer(uint16_t port) noexcept
         : ServerRUDPS {port}
+        , on_recvs {}
+        , users {0}
     {
         on_recvs[GL_TYPE_WORLD]     = &GachiLandServer::OnRecvWorld;
         on_recvs[GL_TYPE_ROOM]      = &GachiLandServer::OnRecvRoom;
@@ -52,13 +44,111 @@ public:
         {
             on_recvs[i] = &GachiLandServer::OnRecvEmpty;
         }
-    
-        for (size_t i = 0; i < SIZE; ++i)
-        {
-            id_map[i].is_used = 0;
-            id_map[i].id = -1;
-        }
     }
+
+    struct User
+    {
+        bool is_used;
+        uint16_t id;
+    };
+
+    User users[SIZE];
+
+    struct LogoutPacket : public RUDPS::SendPacket
+    {
+        uint8_t type;
+        uint16_t id;
+        uint16_t pw;
+        uint16_t world;
+        uint16_t room;
+    };
+
+    void Update(Frame& frame) noexcept
+    {
+        RecvUpdate();
+        for (size_t i = 0; i < rudpss.size(); ++i)
+        {
+            if (!rudpss[i]->is_used)
+            {
+                continue;
+            }
+
+            uint16_t login_id = rudpss[i]->login_id;
+        
+            if (!rudpss[i]->Update(frame))
+            {
+                auto world_i = WorldIndex(login_id);
+                auto room_i = RoomIndex(login_id);
+
+                if (!is_range_id(login_id))
+                {
+                    continue;
+                }
+
+                if (world_i >= WORLD_NUMBER)
+                {
+                    continue;
+                }
+
+                if (room_i >= ROOM_NUMBER)
+                {
+                    continue;
+                }
+                
+                for (uint16_t number_i = 0; number_i < ROOM_SIZE; ++number_i)
+                {
+                    auto destination_i = Index(world_i, room_i, number_i);
+
+                    if (login_id == destination_i)
+                    {
+                        continue;
+                    }
+
+                    auto& destination = users[destination_i];
+
+                    if (!destination.is_used)
+                    {
+                       continue;
+                    }
+
+                    auto packet = std::make_unique<LogoutPacket>();
+                    packet->type = GL_TYPE_ROOM_TURN;
+                    packet->id = login_id;
+                    packet->pw = login_id;
+                    packet->world = world_i;
+                    packet->room = room_i;
+                    static char logout_type[] = u8"logout";
+                    packet->iovs.resize(6);
+                    uint8_t i = 0;
+                    packet->iovs[i].iov_base = &packet->type;
+                    packet->iovs[i++].iov_len = sizeof(packet->type);
+                    packet->iovs[i].iov_base = &packet->id;
+                    packet->iovs[i++].iov_len = sizeof(packet->id);
+                    packet->iovs[i].iov_base = &packet->pw;
+                    packet->iovs[i++].iov_len = sizeof(packet->pw);
+                    packet->iovs[i].iov_base = &packet->world;
+                    packet->iovs[i++].iov_len = sizeof(packet->world);
+                    packet->iovs[i].iov_base = &packet->room;
+                    packet->iovs[i++].iov_len = sizeof(packet->room);
+                    packet->iovs[i].iov_base = logout_type;
+                    packet->iovs[i++].iov_len = sizeof(logout_type);
+                    rudpss[destination.id]->Send(std::move(packet));
+                }
+                uint32_t host = rudpss[i]->address->sin_addr.s_addr;
+                uint16_t port = rudpss[i]->address->sin_port;
+                printf("logout: %u, %u\n", host, port);
+                contactss[host].erase(port);
+                users[login_id].is_used = false;
+                rudpss[i]->is_used = false;
+            }
+            else
+            {
+                rudpss[i]->SendUpdate(frame, cmac);
+            }
+        }
+        SendUpdate();
+    }
+
 private:
 
     bool is_range_id(uint16_t id) noexcept
@@ -68,7 +158,17 @@ private:
 
     uint16_t Index(uint16_t world_i, uint16_t room_i, uint16_t number_i) noexcept
     {
-        return world_i * WORLD_NUMBER + room_i * ROOM_NUMBER + number_i;
+        return world_i * WORLD_SIZE + room_i * ROOM_SIZE + number_i;
+    }
+
+    uint16_t WorldIndex(uint16_t id) noexcept
+    {
+        return id % SIZE / WORLD_SIZE;
+    }
+
+    uint16_t RoomIndex(uint16_t id) noexcept
+    {
+        return id % WORLD_NUMBER / ROOM_SIZE;
     }
 
     uint16_t RoomUsedTotal(uint16_t world_i, uint16_t room_i) noexcept
@@ -76,7 +176,7 @@ private:
         uint16_t total = 0;
         for (uint16_t number_i = 0; number_i < ROOM_SIZE; ++number_i)
         {
-            total += (id_map[Index(world_i, room_i, number_i)].is_used) ? 1 : 0;
+            total += (users[Index(world_i, room_i, number_i)].is_used) ? 1 : 0;
         }
         return total;
     }
@@ -97,11 +197,7 @@ private:
         std::shared_ptr<Message> message) noexcept override
     {
         constexpr size_t gl_type_pow2_max = GL_TYPE_POW2_SIZE - 1;
-        uint8_t rt = *(uint8_t*)iov.iov_base;
         uint8_t type = *(uint8_t*)iov.iov_base & gl_type_pow2_max;
-        printf("pow2 %lu\n", gl_type_pow2_max);
-        printf("rt %u\n", rt);
-        printf("type %u\n", type);
         (this->*on_recvs[type])(rudps, iov, std::move(message));
     }
 
@@ -182,8 +278,6 @@ private:
             packet->room.used_totals[room_i] = RoomUsedTotal(world_i, room_i);
         }
 
-        printf("world_i %u\n", world_i);
-
         size_t i = 0;
         packet->iovs.resize(4);
         packet->iovs[i].iov_base    = iov.iov_base;
@@ -208,7 +302,7 @@ private:
     Login Add(
         uint16_t    world_i,
         uint16_t    room_i,
-        uint16_t    rudps_id) noexcept
+        uint16_t    rid) noexcept
     {
         Login login;
         login.is_success = false;
@@ -218,23 +312,19 @@ private:
 
         for (uint16_t number_i = 0; number_i < ROOM_SIZE; ++number_i)
         {
-            auto& id = id_map[Index(world_i, room_i, number_i)];
+            uint16_t login_id = Index(world_i, room_i, number_i);
+            auto& user = users[login_id];
 
-            if (id.is_used) continue;
+            if (user.is_used) continue;
 
-            for (size_t i = 0; i < SIZE; ++i)
-            {
-                if (id_map[i].is_used && id_map[i].id == rudps_id)
-                {
-                    id_map[i].is_used = false;
-                }
-            }
-
+            user.is_used = true;
+            user.id = rid;
+            auto& rudps = rudpss[rid];
+            rudps->is_used = true;
+            rudps->login_id = login_id;
             login.number_i = number_i;
             login.is_success = true;
-            login.id = Index(world_i, room_i, number_i);
-            id_map[login.id].is_used = true;
-            id_map[login.id].id = rudps_id;
+            login.id = login_id;
             return login;
         }
 
@@ -255,6 +345,10 @@ private:
         auto& world_i = *(uint16_t*)((uint8_t*)iov.iov_base + sizeof(uint8_t));
         auto& room_i = *(uint16_t*)((uint8_t*)iov.iov_base + sizeof(uint8_t) + sizeof(uint16_t));
         auto packet = std::make_unique<LoginPacket>();
+        if (users[rudps.login_id].is_used)
+        {
+            return;
+        }
         packet->login = Add(world_i, room_i, rudps.ID());
 
         size_t i = 0;
@@ -304,12 +398,12 @@ private:
             return;
         }
 
-        if (!id_map[login_id].is_used)
+        if (!users[login_id].is_used)
         {
             return;
         }
 
-        auto& destination = id_map[destination_id];
+        auto& destination = users[destination_id];
 
         if (!destination.is_used)
         {
@@ -363,7 +457,7 @@ private:
                 continue;
             }
 
-            auto& destination = id_map[destination_i];
+            auto& destination = users[destination_i];
 
             if (!destination.is_used)
             {
@@ -392,6 +486,7 @@ int gachi_land_server()
 {
     Frame frame;
     GachiLandServer gls(55488);
+
 
     while (true)
     {

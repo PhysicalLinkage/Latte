@@ -95,6 +95,7 @@ protected:
             std::unique_ptr<Message>&& message) = 0;
     void OnRecv(RecvPacket& packet) noexcept override
     {
+        
         OnRecv(std::move(packet.address), std::move(packet.message));
     }
 };

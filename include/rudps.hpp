@@ -133,9 +133,11 @@ public:
         timer_for_send.Setup(nano);
     }
 
+    template<class F>
     void  RecvUpdate(
             CMAC& cmac, 
-            std::unique_ptr<Message>&& message) noexcept
+            std::unique_ptr<Message>&& message,
+            F f) noexcept
     {
         uint8_t* data = message->data + RUDPS_TYPE_BYTES;
         uint16_t data_size = message->size - RUDPS_TYPE_BYTES;
@@ -239,7 +241,8 @@ public:
         {
             send_packets.pop_front();
         }
-        
+
+        f();
     }
 
 

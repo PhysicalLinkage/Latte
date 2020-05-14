@@ -14,16 +14,37 @@ class ServerRUDPS;
 struct SRUDPS : public RUDPS
 {
 public:
+    bool is_used;
+    uint16_t login_id;
+    std::unique_ptr<sockaddr_in> address;
     explicit SRUDPS(ServerRUDPS& server_, std::unique_ptr<sockaddr_in> address_) noexcept
-        : server {server_}
+        : is_used {false}
         , address {std::move(address_)}
-        , is_used {false}
-    {}
+        , server {server_}
+        , timer {}
+    {
+        timer.Setup(5e9);
+    }
+
+    
+    bool Update(Frame& frame) noexcept
+    {
+        timer.Update(frame);
+        if (timer.IsExpired())
+        {
+            timer.Reset();
+            is_used = false;
+        }
+
+        return is_used;
+    }
      
-    void UpdateAddress(sockaddr_in& address_) noexcept
+    void Update(sockaddr_in& address_) noexcept
     {
         *address = address_;
+        timer.Reset();
     }
+
 private:
     void OnRecv(
             std::unique_ptr<std::deque<iovec>>&& iovs,
@@ -32,9 +53,7 @@ private:
     void OnSend(std::unique_ptr<std::vector<iovec>>&& iovs) noexcept override;
 
     ServerRUDPS& server;
-    std::unique_ptr<sockaddr_in> address;
-public:
-    bool is_used;
+    FrameTimer timer;
 };
 
 class ServerRUDPS : public Server::UDP
@@ -54,16 +73,8 @@ public:
         on_recvs[TYPE_RUDPS_MESSAGE] = &ServerRUDPS::OnRecvMessage;
         on_recvs[TYPE_RUDPS_LOGOUT]  = &ServerRUDPS::OnRecvEmpty;
     }
+
     
-    void Update(Frame& frame) noexcept
-    {
-        RecvUpdate();
-        for (auto& rudps : rudpss)
-        {
-            rudps->SendUpdate(frame, cmac);
-        }
-        SendUpdate();
-    }
 
 protected:
     virtual void OnRecv(
@@ -98,9 +109,14 @@ private:
             if ((contacts_pair != contactss.end()) &&
                 (contacts_pair->second.count(address->sin_port) != 0))
             {
-                return;
+                if (contacts_pair->second[address->sin_port])
+                {
+                    printf("no contact: %u, %u\n", address->sin_addr.s_addr, address->sin_port);
+                    return;
+                }
             }
 
+            printf("contact: %u, %u\n", address->sin_addr.s_addr, address->sin_port);
 
             auto& contact = contactss[address->sin_addr.s_addr][address->sin_port];
             contact = std::make_unique<Contact>();
@@ -119,6 +135,10 @@ private:
                 contact->auth = false;
                 Send(std::make_unique<Server::SendPacket>(
                             *contact->address, std::move(iovs_ptr)));
+            }
+            else
+            {
+                printf("rand_bytes error\n");
             }
         }
     }
@@ -152,6 +172,7 @@ private:
 
         if (contact.auth)
         {
+            printf("contact.auth error\n");
             return;
         }
 
@@ -163,14 +184,26 @@ private:
 
         contact.auth = true;
 
+        printf("auth\n");
         for (size_t i = 0; i < rudpss.size(); ++i)
         {
+            if (!rudpss[i]->is_used)
+            {
+                rudpss[i] = std::make_unique<SRUDPS>(*this, std::move(address));
+                constexpr uint8_t key_offset = RUDPS_TYPE_BYTES + RUDPS_CONTACT_NONCE_BYTES;
+                rudpss[i]->InitKey(dhl, message->data + key_offset);
+                rudpss[i]->InitID(i);
+                rudpss[i]->InitTimer(1e9);
+                rudpss[i]->is_used = true;
+                return;
+            }
         }
         rudpss.push_back(std::make_unique<SRUDPS>(*this, std::move(address)));
         constexpr uint8_t key_offset = RUDPS_TYPE_BYTES + RUDPS_CONTACT_NONCE_BYTES;
         rudpss.back()->InitKey(dhl, message->data + key_offset);
         rudpss.back()->InitID(rudpss.size() - 1);
         rudpss.back()->InitTimer(1e9);
+        rudpss.back()->is_used = true;
     }
 
 
@@ -193,9 +226,23 @@ private:
             printf("2");
             return;
         }
+
         auto& rudps = rudpss[header.id];
-        rudps->UpdateAddress(*address);
-        rudps->RecvUpdate(cmac, std::move(message));
+
+        auto f = [&]
+        {
+            uint32_t host = rudps->address->sin_addr.s_addr;
+            uint16_t port = rudps->address->sin_port;
+            uint32_t next_host = address->sin_addr.s_addr;
+            uint16_t next_port = address->sin_port;
+            if (host != next_host || port != next_port)
+            {
+                contactss[next_host][next_port] = std::move(contactss[host][port]);
+                contactss[host].erase(port);
+            }
+            rudps->Update(*address);
+        };
+        rudps->RecvUpdate(cmac, std::move(message), f);
     }
 
 
@@ -209,10 +256,10 @@ private:
     void (ServerRUDPS::*on_recvs[TYPE_RUDPS_SIZE])(
         std::unique_ptr<sockaddr_in>&& address, 
         std::unique_ptr<Message>&& message);
-    std::unordered_map<uint32_t, std::unordered_map<uint16_t, std::unique_ptr<Contact>>> contactss;
 protected:
+    std::unordered_map<uint32_t, std::unordered_map<uint16_t, std::unique_ptr<Contact>>> contactss;
     std::vector<std::unique_ptr<SRUDPS>> rudpss;
-private:
+protected:
     DHL dhl;
     CMAC cmac;
 };
@@ -221,17 +268,23 @@ void SRUDPS::OnRecv(
         std::unique_ptr<std::deque<iovec>>&& iovs,
         std::unique_ptr<Message>&& message) noexcept
 {
-    std::shared_ptr msg(std::move(message));
-    size_t max_of_i = iovs->size() - 1;
-    for (long i = max_of_i; i >= 0; --i)
+    if (is_used)
     {
-        server.OnRecv(*this, (*iovs)[i], msg);
+        std::shared_ptr msg(std::move(message));
+        size_t max_of_i = iovs->size() - 1;
+        for (long i = max_of_i; i >= 0; --i)
+        {
+            server.OnRecv(*this, (*iovs)[i], msg);
+        }
     }
 }
 
 void SRUDPS::OnSend(std::unique_ptr<std::vector<iovec>>&& iovs) noexcept
 {
-    server.Send(std::make_unique<Server::SendPacket>(*address, std::move(iovs)));
+    if (is_used)
+    {
+        server.Send(std::make_unique<Server::SendPacket>(*address, std::move(iovs)));
+    }
 }
 
 #endif
