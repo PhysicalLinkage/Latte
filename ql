@@ -16,7 +16,7 @@ TEST_OBJ_DIR="test/build/object/"
 MAKEFILE="Makefile"
 MAIN_TEST="test/main_test.cpp"
 TEST_HPP=$2
-TEST_APP="test/test.app"
+TEST_APP="test/build/test.app"
 
 makefile-all()
 {
