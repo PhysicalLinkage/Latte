@@ -14,9 +14,9 @@ TEST_OBJ_DIR="test/build/object/"
 #TEST_CPP_FILES=`find test/src/*.cpp`
 #ALL_OBJ_FILES=`find * -name *.o`
 MAKEFILE="Makefile"
-MAIN_TEST="test/src/main_test.cpp"
+MAIN_TEST="test/main_test.cpp"
 TEST_HPP=$2
-TEST_APP="test/build/app/test.app"
+TEST_APP="test/test.app"
 
 makefile-all()
 {

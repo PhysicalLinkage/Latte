@@ -484,9 +484,11 @@ private:
 
 int gachi_land_server()
 {
+    uint32_t port = 7777;
     Frame frame;
-    GachiLandServer gls(55488);
+    GachiLandServer gls(port);
 
+    printf("start server : port %u\n", port);
 
     while (true)
     {
