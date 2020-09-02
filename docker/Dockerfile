@@ -15,9 +15,10 @@ RUN apt-get update && apt-get install -yq --no-install-recommends \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
+
 RUN apt-get update && apt-get install -yq --no-install-recommends \
-    build-essential \
-    libssl-dev \
+        build-essential \
+        libssl-dev \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 

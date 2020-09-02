@@ -10,8 +10,8 @@
 
 #include <client_udp.hpp>
 
-#define UDP_SERVER_MMRU 8
-#define UDP_SERVER_MMSU 8
+#define UDP_SERVER_MMRU 100
+#define UDP_SERVER_MMSU 100
 
 namespace Server
 {
