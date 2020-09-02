@@ -5,6 +5,7 @@
 ```bash
 git clone https://github.com/PhysicalLinkage/Latte.git
 cd Latte
+mkdir test/build
 bash docker/build.sh latte
 bash docker/create.sh latte
 docker start latte
