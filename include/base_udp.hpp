@@ -55,7 +55,7 @@ public:
 
     void RecvUpdate() noexcept
     {
-        const int recv_result = recvmmsg(socket_fd, recv_mmhs, MMRU, MSG_DONTWAIT, NULL);
+        const int recv_result = recvmmsg(socket_fd, recv_mmhs, MMRU, MSG_DONTWAIT, nullptr);
         if (recv_result > 0)
         {
             for (int i = 0; i < recv_result; ++i)

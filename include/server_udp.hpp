@@ -39,7 +39,7 @@ struct RecvPacket
         msg_hdr.msg_namelen     = size_of_sockaddr_in;
         msg_hdr.msg_iov         = &iov;
         msg_hdr.msg_iovlen      = 1;
-        msg_hdr.msg_control     = NULL;
+        msg_hdr.msg_control     = nullptr;
         msg_hdr.msg_controllen  = 0;
         msg_hdr.msg_flags       = 0;
     }
@@ -64,7 +64,7 @@ struct SendPacket
         msg_hdr.msg_namelen     = size_of_sockaddr_in;
         msg_hdr.msg_iov         = iovs->data();
         msg_hdr.msg_iovlen      = iovs->size();
-        msg_hdr.msg_control     = NULL;
+        msg_hdr.msg_control     = nullptr;
         msg_hdr.msg_controllen  = 0;
         msg_hdr.msg_flags       = 0;
     }

@@ -24,9 +24,9 @@ public:
     explicit DHL() noexcept
         : dh {get_dh2048()}
     {
-        if ((dh == NULL) || (!DH_generate_key(dh)))
+        if ((dh == nullptr) || (!DH_generate_key(dh)))
         {
-            fprintf(stderr, "dh == NULL or !DH_generate_key(dh)");
+            fprintf(stderr, "dh == nullptr or !DH_generate_key(dh)");
             exit(1);
         }
 
@@ -35,7 +35,7 @@ public:
 
     void ComputeKey(uint8_t* key, uint8_t* public_key) noexcept
     {
-        DH_compute_key(key, BN_bin2bn(public_key, DHL_KEY_SIZE, NULL), dh);
+        DH_compute_key(key, BN_bin2bn(public_key, DHL_KEY_SIZE, nullptr), dh);
     }
 
     ~DHL() noexcept

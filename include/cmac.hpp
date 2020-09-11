@@ -20,7 +20,7 @@ public:
 
     bool Init(uint8_t* key) noexcept
     {
-        return CMAC_Init(cmac_ctx, key, CMAC_KEY_SIZE, EVP_aes_128_cbc(), NULL) == 1;
+        return CMAC_Init(cmac_ctx, key, CMAC_KEY_SIZE, EVP_aes_128_cbc(), nullptr) == 1;
     }
 
     bool Update(void* message, size_t size) noexcept
