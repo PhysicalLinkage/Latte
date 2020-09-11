@@ -54,7 +54,7 @@ protected:
 
     // virtual from RUDPS
     void OnRecv(
-            std::unique_ptr<std::vector<iovec>>&& iovs,
+            std::unique_ptr<std::deque<iovec>>&& iovs,
             std::unique_ptr<Message>&& message) noexcept override
     {
         for (long i = iovs->size() - 1; i >= 0; --i)
@@ -109,7 +109,6 @@ private:
 
         size_t public_key_offset = RUDPS_TYPE_BYTES + RUDPS_CONTACT_NONCE_BYTES;
         InitKey(dhl, message->data + public_key_offset);
-        InitSeqAck();
 
         auto iovs_ptr = std::make_unique<std::vector<iovec>>(2);
         auto& iovs = *iovs_ptr;
@@ -170,7 +169,7 @@ private:
 
     void OnRecvMessage(std::unique_ptr<Message>&& message) noexcept
     {
-        RUDPS::RecvUpdate(cmac, std::move(message));
+        RUDPS::RecvUpdate(cmac, std::move(message), []{});
     }
 
     void OnRecvEmpty(std::unique_ptr<Message>&&) noexcept

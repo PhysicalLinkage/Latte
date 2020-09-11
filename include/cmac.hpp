@@ -4,8 +4,8 @@
 
 #include <openssl/cmac.h>
 
-#define CMAC_KEY_SIZE 16
-#define CMAC_MAC_SIZE 16
+static constexpr size_t CMAC_KEY_SIZE = 16;
+static constexpr size_t CMAC_MAC_SIZE = 16;
 
 class CMAC
 {

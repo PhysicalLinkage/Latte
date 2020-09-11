@@ -9,7 +9,7 @@
 #include <vector>
 #include <deque>
 
-#define UDP_MTU 512
+static constexpr size_t UDP_MTU = 512;
 
 /*
 struct RecvPacket

@@ -5,13 +5,13 @@
 #include <server_rudps.hpp>
 #include <util.hpp>
 
-#define GL_TYPE_WORLD       0
-#define GL_TYPE_ROOM        1
-#define GL_TYPE_LOGIN       2
-#define GL_TYPE_LOGOUT      3
-#define GL_TYPE_TURN        4
-#define GL_TYPE_ROOM_TURN   5
-#define GL_TYPE_SIZE        6
+static constexpr size_t GL_TYPE_WORLD       = 0;
+static constexpr size_t GL_TYPE_ROOM        = 1;
+static constexpr size_t GL_TYPE_LOGIN       = 2;
+static constexpr size_t GL_TYPE_LOGOUT      = 3;
+static constexpr size_t GL_TYPE_TURN        = 4;
+static constexpr size_t GL_TYPE_ROOM_TURN   = 5;
+static constexpr size_t GL_TYPE_SIZE        = 6;
 
 constexpr size_t GL_TYPE_POW2_SIZE = Pow2(Log2(GL_TYPE_SIZE-1)+1);
 

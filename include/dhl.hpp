@@ -5,7 +5,7 @@
 #include <openssl/rand.h>
 #include <dh_pg.hpp>
 
-#define DHL_KEY_SIZE 256
+static constexpr size_t DHL_KEY_SIZE = 256;
 
 static const char rand_seed[] = "t48kfb,ep*oa<ue+yt4,em.z@nz*:b{9ha-gfqp_ee1}bv";
 

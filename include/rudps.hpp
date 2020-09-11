@@ -15,14 +15,14 @@
 
 #include <client_udp.hpp>
 
-#define SEND_INTERVAL 1e9
-#define RUDPS_ELEMENT_SIZE 6
+static constexpr double SEND_INTERVAL = 1e9;
+static constexpr size_t RUDPS_ELEMENT_SIZE = 6;
 
-#define TYPE_RUDPS_CONTACT  0
-#define TYPE_RUDPS_AUTH     1
-#define TYPE_RUDPS_MESSAGE  2
-#define TYPE_RUDPS_LOGOUT   3
-#define TYPE_RUDPS_SIZE     4
+static constexpr size_t TYPE_RUDPS_CONTACT = 0;
+static constexpr size_t TYPE_RUDPS_AUTH    = 1;
+static constexpr size_t TYPE_RUDPS_MESSAGE = 2;
+static constexpr size_t TYPE_RUDPS_LOGOUT  = 3;
+static constexpr size_t TYPE_RUDPS_SIZE    = 4;
 
 const char* type_rudps_to_string(uint8_t type) noexcept
 {
@@ -39,8 +39,7 @@ const char* type_rudps_to_string(uint8_t type) noexcept
     return (type < TYPE_RUDPS_SIZE) ? strings[type] : error;
 }
 
-#define RUDPS_CONTACT_NONCE_BYTES 12
-
+static constexpr int RUDPS_CONTACT_NONCE_BYTES = 12;
 
 struct HeaderRUDPS
 {
@@ -66,21 +65,20 @@ struct HeaderRUDPS
     }
 };
 
-#define HEADER_RUDPS_SIZE   ( \
-        CMAC_MAC_SIZE       + \
-        sizeof(uint32_t)    + \
-        sizeof(uint16_t)    + \
-        sizeof(uint16_t)    + \
-        sizeof(uint16_t)    )
+static constexpr size_t HEADER_RUDPS_SIZE = CMAC_MAC_SIZE
+                                        + sizeof(uint32_t)
+                                        + sizeof(uint16_t)
+                                        + sizeof(uint16_t)
+                                        + sizeof(uint16_t);
         
-#define RUDPS_TYPE_BYTES 1
-#define RUDPS_CONTACT_REQUEST_BYTES RUDPS_TYPE_BYTES
-#define RUDPS_CONTACT_REPLY_BYTES (RUDPS_TYPE_BYTES \
-    + RUDPS_CONTACT_NONCE_BYTES \
-    + DHL_KEY_SIZE)
-#define RUDPS_AUTH_REQUEST_BYTES RUDPS_CONTACT_REPLY_BYTES
-#define RUDPS_AUTH_REPLY_BYTES (RUDPS_TYPE_BYTES + HEADER_RUDPS_SIZE)         
-#define RUDPS_LOGOUT_REQUEST_BYTES (RUDPS_TYPE_BYTES + HEADER_RUDPS_SIZE)
+static constexpr size_t RUDPS_TYPE_BYTES = 1;
+static constexpr size_t RUDPS_CONTACT_REQUEST_BYTES = RUDPS_TYPE_BYTES;
+static constexpr size_t RUDPS_CONTACT_REPLY_BYTES = RUDPS_TYPE_BYTES
+                                                + RUDPS_CONTACT_NONCE_BYTES
+                                                + DHL_KEY_SIZE;
+static constexpr size_t RUDPS_AUTH_REQUEST_BYTES = RUDPS_CONTACT_REPLY_BYTES;
+static constexpr size_t RUDPS_AUTH_REPLY_BYTES = RUDPS_TYPE_BYTES + HEADER_RUDPS_SIZE;
+static constexpr size_t RUDPS_LOGOUT_REQUEST_BYTES = RUDPS_TYPE_BYTES + HEADER_RUDPS_SIZE;
 
 struct iovec8
 {

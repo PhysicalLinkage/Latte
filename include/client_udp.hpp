@@ -10,8 +10,8 @@
 
 #include <base_udp.hpp>
 
-#define UDP_CLIENT_MMRU 8
-#define UDP_CLIENT_MMSU 8
+static constexpr size_t UDP_CLIENT_MMRU = 8;
+static constexpr size_t UDP_CLIENT_MMSU = 8;
 
 namespace Client
 {
